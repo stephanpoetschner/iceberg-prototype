@@ -1,14 +1,23 @@
 # Billing Archive — Project Overview
 
-**Status**: Planning
-**Date**: 2026-03-26
-**Team**: EDM
+## Reading Path
+
+New to the project? Read in this order:
+
+1. **This file** — what the project is and why
+2. [`docs/spec.md`](spec.md) — production specification: schema, partitioning, pipeline design
+3. [`prototype/README.md`](../prototype/README.md) — get the prototype running
+
+Reference material: [`docs/reference/`](reference/)
+- [`design-decisions.md`](reference/design-decisions.md) — why each architectural choice was made
+- [`notebook-vs-prototype.md`](reference/notebook-vs-prototype.md) — concrete bugs in the notebook spike and how the prototype fixes them
 
 ---
 
 ## Context
 
-EDM operates an energy data management platform that ingests 15-minute smart meter readings for approximately 50,000 metering points across roughly 2,500 energy communities in Austria. All metering data currently lives in TimescaleDB (PostgreSQL), and billing exports are pre-aggregated CSV files.
+We operate an energy data management platform that ingests 15-minute smart meter readings for approximately 50,000 metering points across roughly 300 energy communities in Austria. Some big communities will host up to 4,000 metering points.
+All metering data currently lives in TimescaleDB (PostgreSQL), and billing exports are pre-aggregated CSV files.
 
 This architecture was appropriate for flat-tariff billing but cannot support the company's next phase of growth.
 
@@ -44,6 +53,15 @@ An archival pipeline writes frozen, per-community, per-billing-period snapshots 
 
 Downstream consumers — the redesigned billing pipeline, analytics workloads, and third-party partners — read data via DuckDB using only S3 credentials and a metadata URI. No database access or catalog service is required.
 
+### Consumer architecture
+
+edm_backend (Django) is the only writer: when a billing period is sealed, it writes the Iceberg snapshot and a sidecar JSON to S3, then notifies downstream consumers. Two distinct read paths follow from there:
+
+- **Billing pipeline (event-driven, pinned reads).** A separate service is triggered by a webhook carrying a sidecar URI. It reads the snapshot pinned to the exact `iceberg_metadata_uri` recorded in that sidecar — a v2 correction never silently leaks into a v1 invoice. Contract: [`docs/superpowers/specs/2026-04-24-billing-pipeline-interface-design.md`](superpowers/specs/2026-04-24-billing-pipeline-interface-design.md).
+- **Analytics & third parties (pull, latest).** Cross-community queries over the latest committed state. No webhook, no sidecar pin; readers are authorised against S3 only. Detailed contract is [topic §3](superpowers/brainstorm-topics.md) — not yet specified.
+
+Neither read path holds Postgres credentials.
+
 ### Why Iceberg + Parquet + DuckDB
 
 | Concern | How this stack addresses it |
@@ -58,21 +76,9 @@ Downstream consumers — the redesigned billing pipeline, analytics workloads, a
 
 ## Approach: Prototype First
 
-Before modifying the production system, a standalone prototype will demonstrate the full write-and-read cycle using synthetic data at realistic scale (50,000 metering points, ~744M records/month).
+Before modifying the production system, a standalone prototype demonstrates the full write-and-read cycle using synthetic data at realistic scale.
 
-The prototype will:
-
-- Generate synthetic metering data matching production characteristics
-- Write data into Iceberg via PyIceberg with the proposed schema and partitioning
-- Use PostgreSQL as the Iceberg catalog (matching production — not SQLite)
-- Read and query data via DuckDB without catalog access
-- Validate atomic writes: each community export is a single Iceberg commit, invisible to readers until complete
-- Validate idempotency: `write_snapshot()` is fully idempotent — retries recover from a crash between the Iceberg commit and the sidecar write; duplicate exports are detected and rejected at the Iceberg level
-- Validate concurrent writes: multiple processes writing different communities simultaneously
-- Run performance benchmarks for both write and read paths, including DST transition correctness
-- Validate the metadata sidecar design (business context and discovery; cryptographic sealing deferred to billing pipeline)
-
-The prototype validates the technical approach and surfaces scaling issues before committing to the architecture in production.
+The prototype validates the technical approach and surfaces scaling issues before committing to the architecture in production. See [`prototype/README.md`](../prototype/README.md) for setup and usage.
 
 ---
 

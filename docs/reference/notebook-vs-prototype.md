@@ -1,7 +1,5 @@
 # Approach Comparison: Prototype vs. Notebook
 
-**Date**: 2026-03-27
-
 Comparing `prototype/src/` (modular, tested Python package) against `340-iceberg-s3.ipynb` (exploratory spike against real production data via Django ORM and a real S3 bucket).
 
 These are not really competing designs — the notebook is a spike that proved S3 + DuckDB works end-to-end. But several concrete choices in the notebook would cause real problems if promoted to production, and a few things the notebook discovered are genuinely valuable.
@@ -33,21 +31,23 @@ Notebooks are fast for confirming "does this query shape return the right thing?
 PartitionField(source_id=1, field_id=1, transform=IdentityTransform(), name="snapshot_id")
 ```
 
-Every snapshot gets its own partition directory on S3. At 2,500 communities × 12 months × any correction versions, you accumulate tens of thousands of snapshot-specific directories. Iceberg metadata operations (listing, planning) slow down proportionally — AWS S3 LIST requests scale linearly with partition count.
+Every snapshot gets its own partition directory on S3. At 300 communities × 12 months × any correction versions, you accumulate thousands of snapshot-specific directories per year and tens of thousands over the multi-year retention horizon. Iceberg metadata operations (listing, planning) slow down proportionally — AWS S3 LIST requests scale linearly with partition count.
 
 The prototype uses a **month transform on `time`**:
 
 ```python
 # prototype schema.py
 PartitionSpec(
-    PartitionField(source_id=2, field_id=2, transform=IdentityTransform(), name="community_id"),
-    PartitionField(source_id=3, field_id=1003, transform=MonthTransform(), name="time_month"),
+    PartitionField(source_id=2, field_id=100, transform=IdentityTransform(), name="community_id"),
+    PartitionField(source_id=3, field_id=101, transform=MonthTransform(),    name="time_month"),
 )
 ```
 
-This caps growth at ~30K partitions total (2,500 × 12), regardless of how many correction snapshots are written.
+This caps growth at ~3,600 partitions per year (300 × 12), regardless of how many correction snapshots are written.
 
-**2. `uint8` for `community_id` overflows at 256 — you have 2,500 communities**
+See [Design Decisions §2–4](design-decisions.md#2-partitioning-community_id-monthtime-over-community_id-snapshot_id) for full rationale.
+
+**2. `uint8` for `community_id` overflows at 256 — you have ~300 communities**
 
 ```python
 # notebook
@@ -55,6 +55,8 @@ pyarrow.field("community_id", pyarrow.uint8(), nullable=False),  # max 255
 ```
 
 This silently wraps around. Community 256 becomes community 0. Queries would return mixed results from multiple real communities. The prototype uses `int32` (max ~2 billion).
+
+See [Design Decisions §12](design-decisions.md#12-schema-corrections-from-the-initial-design) for the full schema corrections table.
 
 **3. Timestamps are timezone-naive — SNAP/NONSNAP query is wrong**
 
@@ -81,6 +83,8 @@ The prototype handles this correctly:
 timezone('Europe/Vienna', time) >= TIME '10:00' AND timezone('Europe/Vienna', time) < TIME '16:00'
 ```
 
+See [Design Decisions §12](design-decisions.md#12-schema-corrections-from-the-initial-design).
+
 **4. Random snapshot IDs — no idempotency**
 
 ```python
@@ -92,6 +96,8 @@ If a Celery task crashes halfway through and retries, it generates a new random 
 
 The prototype derives a deterministic ID from `(community_id, period_start, snapshot_version)` via SHA-256. Retry → same ID → pre-write scan detects the duplicate → raises `SnapshotAlreadyExistsError`.
 
+See [Design Decisions §7](design-decisions.md#7-snapshot-id-deterministic-hash-over-random).
+
 **5. SQLite catalog won't handle concurrent writes**
 
 ```python
@@ -101,9 +107,13 @@ The prototype derives a deterministic ID from `(community_id, period_start, snap
 
 SQLite uses file-level locking. Two Celery workers writing different communities at the same time will serialize or deadlock on the catalog. The prototype targets PostgreSQL (matching production), which supports row-level locking and concurrent OCC commits.
 
+See [Design Decisions §1](design-decisions.md#1-catalog-postgresql).
+
 **6. `uint64` / signed int64 type mismatch**
 
 The notebook's Arrow schema uses `uint64` for `snapshot_id` but the Iceberg schema declares `LongType()` (signed int64). PyArrow's `uint64` can represent values that don't fit in a signed int64. Random IDs from `randrange(2**32)` happen to stay in range, but this is an accident. The prototype uses `int64` throughout.
+
+See [Design Decisions §12](design-decisions.md#12-schema-corrections-from-the-initial-design).
 
 **7. Sidecar is ad-hoc and coupled to Django**
 
@@ -118,6 +128,8 @@ snapshot_metadata = {
 
 This works only inside the Django process. The metadata format depends on `CommunitySerializer` — if that serializer changes (it will), historical sidecars may not parse. The prototype uses a standalone Pydantic model with explicit fields and version-stable serialization.
 
+See [Design Decisions §10](design-decisions.md#10-sidecar-discovery-document-not-audit-seal).
+
 **8. Hard-coded credentials**
 
 AWS credentials appear in plain text in the notebook and are presumably committed to git. Rotate immediately and use environment variables or a secrets manager.
@@ -130,7 +142,7 @@ AWS credentials appear in plain text in the notebook and are presumably committe
 |---|---|---|
 | Data source | Real Django ORM | Synthetic (deterministic) |
 | Catalog backend | SQLite (single-writer) | PostgreSQL (concurrent) |
-| Partitioning | `community_id` + `snapshot_id` — unbounded | `community_id` + `time_month` — bounded at ~30K |
+| Partitioning | `community_id` + `snapshot_id` — unbounded | `community_id` + `time_month` — bounded at ~3,600/year |
 | `community_id` type | `uint8` — overflows at 256 | `int32` — safe to 2 billion |
 | Timestamp type | Timezone-naive | Timezone-aware (`TimestamptzType`) |
 | SNAP/NONSNAP | Wrong on DST days | DST-correct via `timezone('Europe/Vienna', ...)` |
