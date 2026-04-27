@@ -81,8 +81,24 @@ def setup_and_write_200pt():
         community_ec_id="AT-EC-000200",
         period_start=PERIOD,
         period_end=PERIOD_END,
-        ec_registrations=[],
-        metering_points=[],
+        ec_registrations=[
+            ECRegistrationRecord(
+                id=200000,
+                external_id="EXT-200000",
+                meteringpoint_id=2000000,
+                community_id=200,
+                registered_from=PERIOD,
+                registered_until=None,
+            )
+        ],
+        metering_points=[
+            MeteringPointRecord(
+                id=2000000,
+                external_id="EXT-MP-2000000",
+                name="MP 2000000",
+                energy_direction=1,
+            )
+        ],
         sidecar_dir=SIDECAR_DIR,
     )
     return table.metadata_location, sid

@@ -1,18 +1,18 @@
 import json
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MeteringPointRecord(BaseModel):
     id: int
-    external_id: int
+    external_id: str
     name: str
     energy_direction: int  # 1=import, 2=export
 
 
 class ECRegistrationRecord(BaseModel):
     id: int
-    external_id: int
+    external_id: str
     meteringpoint_id: int
     community_id: int
     registered_from: datetime
@@ -30,8 +30,8 @@ class BillingSnapshotMetadata(BaseModel):
     record_count: int
     exported_at: datetime
     iceberg_metadata_uri: str       # pointer to metadata file at time of write
-    ec_registrations: list[ECRegistrationRecord]
-    metering_points: list[MeteringPointRecord]
+    ec_registrations: list[ECRegistrationRecord] = Field(min_length=1)
+    metering_points: list[MeteringPointRecord] = Field(min_length=1)
 
 
 def write_sidecar(path: str, metadata: BillingSnapshotMetadata) -> None:

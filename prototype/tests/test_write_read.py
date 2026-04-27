@@ -130,14 +130,14 @@ def test_write_snapshot_sidecar_integration(iceberg_table, sidecar_dir):
 
     ec_registrations = [
         ECRegistrationRecord(
-            id=1, egon_id=100, meteringpoint_id=20000,
+            id=1, external_id="EXT-1", meteringpoint_id=20000,
             community_id=community_id,
             registered_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
             registered_until=None,
         )
     ]
     metering_points = [
-        MeteringPointRecord(id=20000, egon_id=200, name="AT0020000000000000000001234567890", energy_direction=1)
+        MeteringPointRecord(id=20000, external_id="EXT-MP-20000", name="AT0020000000000000000001234567890", energy_direction=1)
     ]
 
     metadata = write_snapshot(

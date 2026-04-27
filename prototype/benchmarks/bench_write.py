@@ -37,7 +37,7 @@ def _synthetic_context(community_id: int) -> dict:
         ec_registrations=[
             ECRegistrationRecord(
                 id=community_id,
-                egon_id=community_id * 10,
+                external_id=f"EXT-{community_id * 10}",
                 meteringpoint_id=community_id * 100,
                 community_id=community_id,
                 registered_from=PERIOD,
@@ -47,7 +47,7 @@ def _synthetic_context(community_id: int) -> dict:
         metering_points=[
             MeteringPointRecord(
                 id=community_id * 100,
-                egon_id=community_id * 1000,
+                external_id=f"EXT-MP-{community_id * 1000}",
                 name=f"MP-{community_id}",
                 energy_direction=1,
             )
@@ -133,4 +133,4 @@ if __name__ == "__main__":
     bench_batch_write(num_communities=100, num_points=20, label="batch-100 ")
     if args.scale:
         print("\n=== Full-Scale: 2500 communities ===")
-        bench_batch_write(num_communities=2500, num_points=20, label="scale-2500")
+        bench_batch_write(num_communities=200, num_points=2000, label="scale-400000")

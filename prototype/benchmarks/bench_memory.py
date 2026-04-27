@@ -70,12 +70,12 @@ def bench_write_memory(num_points: int):
         period_end=PERIOD_END,
         ec_registrations=[
             ECRegistrationRecord(
-                id=1, egon_id=10, meteringpoint_id=100, community_id=1,
+                id=1, external_id="EXT-10", meteringpoint_id=100, community_id=1,
                 registered_from=PERIOD, registered_until=None,
             )
         ],
         metering_points=[
-            MeteringPointRecord(id=100, egon_id=1000, name="MP-1", energy_direction=1)
+            MeteringPointRecord(id=100, external_id="EXT-MP-1000", name="MP-1", energy_direction=1)
         ],
         sidecar_dir=SIDECAR_DIR,
     )

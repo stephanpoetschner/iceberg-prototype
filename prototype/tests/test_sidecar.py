@@ -36,14 +36,14 @@ def _make_metadata(snapshot_id: int, record_count: int, metadata_uri: str) -> Bi
         iceberg_metadata_uri=metadata_uri,
         ec_registrations=[
             ECRegistrationRecord(
-                id=1, egon_id=100, meteringpoint_id=10000,
+                id=1, external_id="EXT-1", meteringpoint_id=10000,
                 community_id=10,
                 registered_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 registered_until=None,
             )
         ],
         metering_points=[
-            MeteringPointRecord(id=10000, egon_id=200, name="AT0010000000000000000001234567890", energy_direction=1)
+            MeteringPointRecord(id=10000, external_id="EXT-MP-10000", name="AT0010000000000000000001234567890", energy_direction=1)
         ],
     )
 
@@ -125,14 +125,14 @@ def _write_snapshot_kwargs(snapshot_id, sidecar_dir):
         period_end=datetime(2026, 2, 1, tzinfo=timezone.utc),
         ec_registrations=[
             ECRegistrationRecord(
-                id=1, egon_id=100, meteringpoint_id=10000,
+                id=1, external_id="EXT-1", meteringpoint_id=10000,
                 community_id=20,
                 registered_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 registered_until=None,
             )
         ],
         metering_points=[
-            MeteringPointRecord(id=10000, egon_id=200, name="AT0010000000000000000001234567890", energy_direction=1)
+            MeteringPointRecord(id=10000, external_id="EXT-MP-10000", name="AT0010000000000000000001234567890", energy_direction=1)
         ],
         sidecar_dir=sidecar_dir,
     )
